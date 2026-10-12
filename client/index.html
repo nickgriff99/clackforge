@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#fa8927" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Description, OG, and Twitter-card tags live EXCLUSIVELY in React now
+      (`components/seo/Seo.tsx`, default-rendered from `routes/RootLayout.tsx`
+      on every route, overridden per-page where a route renders its own
+      `<Seo>`) - NOT duplicated here as static tags. This was tried the other
+      way first (static here + React override) and proven broken by a real
+      headless-browser check: React 19's native metadata hoisting, under a
+      plain `createRoot()` client-only mount (no `hydrateRoot`), does NOT
+      adopt/replace pre-existing non-React `<head>` nodes - it inserts a
+      SECOND node alongside the static one and never removes the static one.
+      For `<meta>` tags the static node stayed first in document order, so
+      every `document.querySelector`-style consumer (Lighthouse, most real
+      crawlers, this project's own verification script) read the STALE
+      generic value on every route, never the per-page override - a real
+      regression, not a hypothetical. `<title>` was the one exception (React
+      happens to insert its managed title BEFORE the static one, so
+      `document.title` resolved correctly) - see that tag's own note below.
+      `/og-image.png`/`manifest.json`/favicons above stay static (no per-page
+      variant needed for those outside `ShopProduct.tsx`, which overrides
+      `og:image` via React too - see `Seo.tsx`'s own doc comment for the
+      honest limit of that: it only reaches JS-executing crawlers, not
+      non-JS link-unfurl bots like Slack/Discord/iMessage, since there's no
+      SSR/prerendering in this CSR-only SPA to serve them a per-page value).
+    -->
+    <!--
+      This static `<title>` IS kept (unlike description/OG above) - proven
+      safe by the same check: React inserts its managed `<title>` before this
+      one, so `document.title` (spec: first title in tree order) always
+      resolves to React's value once it mounts, and the orphaned duplicate
+      this leaves behind is inert noise, not a wrong-value bug. Still the
+      real pre-JS-paint fallback (tab title before the bundle even loads).
+    -->
+    <title>CLACKFORGE | Build your clack.</title>
+    <script>
+      // Runs before React mounts - real anti-flash, unlike a JSX-rendered
+      // <script> (React 19 won't execute those on the client). Mirrors
+      // src/lib/theme.tsx's storage key and default.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("clackforge:theme")
+          var theme = stored === "light" ? "light" : "dark"
+          document.documentElement.classList.add(theme)
+        } catch (e) {
+          document.documentElement.classList.add("dark")
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

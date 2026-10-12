@@ -1,0 +1,165 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Brand type: self-hosted (no runtime Google Fonts request) */
+@import "@fontsource-variable/oswald"; /* display / condensed headings */
+@import "@fontsource-variable/inter"; /* body grotesk */
+@import "@fontsource/ibm-plex-mono/400.css"; /* specs + prices */
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * CLACKFORGE design tokens.
+ * Dark theme is the default brand surface (industrial workshop at night,
+ * forge-amber accent). Light theme ("daylight shop") is an explicit opt-in
+ * via the .light class, toggled by <ThemeToggle>.
+ */
+
+@theme inline {
+  --font-heading: var(--font-display);
+  --font-display: "Oswald Variable", "Oswald", Impact, sans-serif;
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Theme-dependent shadows need the var() indirection so .light can override them. */
+  --shadow-elevated: var(--shadow-elevated-raw);
+  --shadow-glow: var(--shadow-glow-raw);
+}
+
+/* Motion tokens don't change between themes, so they are registered directly as
+   literal values (no var() indirection needed) - still generates ease- and
+   duration- prefixed utilities. */
+@theme {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.4);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 360ms;
+}
+
+:root {
+  /* Dark is the default brand surface - no .dark class required on <html>. */
+  --background: oklch(0.16 0.012 265);
+  --foreground: oklch(0.96 0.004 265);
+
+  --card: oklch(0.21 0.014 265);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.19 0.014 265);
+  --popover-foreground: var(--foreground);
+
+  /* Forge amber - the molten-metal accent, CTAs + brand mark */
+  --primary: oklch(0.74 0.17 55);
+  --primary-foreground: oklch(0.15 0.02 55);
+
+  --secondary: oklch(0.29 0.012 265);
+  --secondary-foreground: var(--foreground);
+
+  --muted: oklch(0.26 0.012 265);
+  --muted-foreground: oklch(0.67 0.012 265);
+
+  /* Switch-LED cyan - secondary accent for links/active nav/focus states */
+  --accent: oklch(0.74 0.12 205);
+  --accent-foreground: oklch(0.14 0.02 205);
+
+  /* Lightness 0.68: `text-destructive` on `dark:bg-destructive/20` measured
+     4.27:1 at 0.64, under the AA 4.5:1 minimum. 0.68 clears it with margin. */
+  --destructive: oklch(0.68 0.21 25);
+  --destructive-foreground: oklch(0.97 0 0);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.74 0.17 55 / 55%);
+
+  --radius: 0.5rem;
+
+  --shadow-elevated-raw: 0 12px 32px -8px rgb(0 0 0 / 0.5), 0 2px 8px -2px rgb(0 0 0 / 0.4);
+  --shadow-glow-raw: 0 0 0 1px oklch(0.74 0.17 55 / 0.4), 0 0 24px -4px oklch(0.74 0.17 55 / 0.5);
+}
+
+.light {
+  --background: oklch(0.98 0.004 90);
+  --foreground: oklch(0.2 0.012 265);
+
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  --primary: oklch(0.6 0.17 50);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.93 0.006 90);
+  --secondary-foreground: var(--foreground);
+
+  --muted: oklch(0.93 0.006 90);
+  --muted-foreground: oklch(0.46 0.012 265);
+
+  --accent: oklch(0.52 0.13 205);
+  --accent-foreground: oklch(0.99 0 0);
+
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0 0 0 / 10%);
+  --input: oklch(0 0 0 / 14%);
+  --ring: oklch(0.6 0.17 50 / 50%);
+
+  --shadow-elevated-raw: 0 12px 32px -8px rgb(0 0 0 / 0.12), 0 2px 8px -2px rgb(0 0 0 / 0.08);
+  --shadow-glow-raw: 0 0 0 1px oklch(0.6 0.17 50 / 0.3), 0 0 24px -6px oklch(0.6 0.17 50 / 0.35);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  html.light {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading tracking-tight;
+  }
+  code,
+  kbd,
+  .font-specs {
+    @apply font-mono;
+  }
+}

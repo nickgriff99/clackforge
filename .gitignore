@@ -1,0 +1,38 @@
+# Root .gitignore — each of client/, server/, shared/ also has its own
+# narrower .gitignore; this is the safety net at the repo root since there's
+# no workspace config tying them together.
+
+node_modules/
+dist/
+build/
+
+# Env files — never commit secrets. Real values live in Render's dashboard
+# (prod) or a local-only .env (dev), never in git.
+.env
+.env.local
+.env.*.local
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+*.log
+
+# Vite / TS build caches
+*.tsbuildinfo
+.vite/
+
+# Playwright output
+playwright-report/
+test-results/
+blob-report/
+
+# Coverage output
+coverage/
+
+# Local scratch files
+cookies*.txt
+scratch-*
+
+# Editor directories
+.vscode/
+.idea/

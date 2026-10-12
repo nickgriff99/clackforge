@@ -1,0 +1,88 @@
+# CLACKFORGE - Render Blueprint
+#
+# Deploys two services: the Express API (web service) and the Vite build
+# (static site). The database lives on Supabase, not Render: Render's free
+# Postgres is deleted 30 days after creation, which would take the demo down.
+#
+# Apply via the Render dashboard: New -> Blueprint -> point at this repo.
+# After the first deploy, set the values marked `sync: false` in the dashboard.
+#
+# Service names below produce https://clackforge-client.onrender.com and
+# https://clackforge-server.onrender.com. If Render suffixes either name,
+# update CLIENT_ORIGIN and the /api rewrite destination to match.
+#
+# Why the static site proxies /api instead of calling the API directly
+# (the client defaults to relative /api URLs in production builds):
+# *.onrender.com is on the Public Suffix List, so the two services would be
+# different "sites" and the session cookie would be third-party. Safari and
+# private windows block those, which would break sign-in for many visitors.
+# With the rewrite, the browser only ever sees the client's origin.
+#
+# No `rootDir` on purpose: both packages import ../shared/src, so the build
+# commands run from the repo root and install shared's dependencies first.
+# `--include=dev` is required because NODE_ENV=production would otherwise skip
+# devDependencies (prisma, tsx, typescript, vite).
+
+services:
+  # --- API (Express) ---------------------------------------------------
+  - type: web
+    name: clackforge-server
+    runtime: node
+    plan: free
+    # Applies committed migrations to the database on every deploy.
+    buildCommand: cd shared && npm install --include=dev && cd ../server && npm install --include=dev && npx prisma generate && npx prisma migrate deploy
+    startCommand: cd server && npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # Supabase "Session pooler" connection string (port 5432).
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      # Exact origin of the static site, no trailing slash or path.
+      - key: CLIENT_ORIGIN
+        value: https://clackforge-client.onrender.com
+      # Static site proxy + Render edge = two proxies in front of Express.
+      - key: TRUST_PROXY_HOPS
+        value: 2
+      # Optional integrations. The app runs without them.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Must be https://<client origin>/api/auth/google/callback
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+
+  # --- Client (Vite + React, static site) -------------------------------
+  - type: web
+    name: clackforge-client
+    runtime: static
+    buildCommand: cd shared && npm install --include=dev && cd ../client && npm install --include=dev && npm run build
+    staticPublishPath: client/dist
+    envVars:
+      # Links shown on the About page. Fill in after you create the repo.
+      - key: VITE_REPO_URL
+        sync: false
+      - key: VITE_LIVE_URL
+        sync: false
+    routes:
+      # Order matters: the API proxy must come before the SPA fallback.
+      - type: rewrite
+        source: /api/*
+        destination: https://clackforge-server.onrender.com/api/*
+      # React Router's client-side routing needs every other path to resolve
+      # to index.html, not a 404 from the static file host.
+      - type: rewrite
+        source: /*
+        destination: /index.html

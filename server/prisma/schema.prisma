@@ -1,0 +1,469 @@
+// CLACKFORGE data model. Do not hand-edit without re-syncing
+// shared/src/*.ts zod shapes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ProductType {
+  KIT
+  SWITCH
+  KEYCAP_SET
+  ACCESSORY
+  CUSTOM_BUILD
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+// PROJECT_SPECS.md section 5 (Account): Placed -> Building -> Shipped -> Delivered.
+// Order rows are only created once Stripe's webhook confirms payment (see
+// shared/src/api.ts TODO block), so there is no separate "pending" state to model.
+enum OrderStatus {
+  PLACED
+  BUILDING
+  SHIPPED
+  DELIVERED
+}
+
+// Group Buy / Drop status. Not assigned to any
+// column on `GroupBuyDrop` (see that model's doc comment) - documents the
+// four states next to the model that drives them; status is COMPUTED by the
+// route handler at read time from openAt/closeAt/soldCount/reservations, not
+// stored. See shared/src/groupBuyDrop.ts's DropStatusSchema for the exact
+// derivation order and the DB-enum-vs-wire-casing note.
+enum DropStatus {
+  UPCOMING
+  LIVE
+  SOLD_OUT
+  CLOSED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONVERTED
+  EXPIRED
+  RELEASED
+}
+
+// ---------------------------------------------------------------------------
+// Auth / sessions
+// ---------------------------------------------------------------------------
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  // Nullable: a Google-OAuth-only account never sets a password.
+  hashedPassword String?
+  // Nullable: a local-password-only account never links Google.
+  googleId       String?  @unique
+  displayName    String
+  role           UserRole @default(CUSTOMER)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  addresses        Address[]
+  carts            Cart[]
+  orders           Order[]
+  customBuilds     CustomBuild[]
+  savedBuilds      SavedBuild[]
+  dropReservations DropReservation[]
+
+  @@index([role])
+}
+
+// connect-pg-simple's documented table shape (session-pg module's own
+// table.sql), modeled 1:1 so Prisma migrations own table creation instead
+// of connect-pg-simple's `createTableIfMissing`. Pass
+// `{ tableName: "session", createTableIfMissing: false }` to the store
+// config. `sess` is plain `json` (not `jsonb`) to match connect-pg-simple's
+// own DDL exactly.
+model Session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@map("session")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Product {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  name           String
+  tagline        String
+  description    String
+  category       ProductType
+  // Integer cents - never a float. See shared/src/common.ts CentsSchema.
+  basePrice      Int
+  currency       String        @default("usd")
+  images         String[]      @default([])
+  // Record<string,string>, rendered as a monospace spec sheet client-side.
+  specs          Json
+  isConfigurable Boolean       @default(false)
+  status         ProductStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  variants      Variant[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  customBuilds  CustomBuild[]
+  groupBuyDrops GroupBuyDrop[]
+
+  @@index([category])
+  @@index([status])
+}
+
+model Variant {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String
+  sku        String   @unique
+  // Cents, added to Product.basePrice. Can be negative.
+  priceDelta Int      @default(0)
+  attributes Json
+  stock      Int      @default(0)
+  image      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  // Not used to derive drop inventory - see GroupBuyDrop's doc comment.
+  // This back-relation exists only because Prisma requires both sides of
+  // every relation to be declared; a drop-linked Variant's `stock` column
+  // is deliberately left at 0/unused.
+  groupBuyDrops GroupBuyDrop[]
+
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Configurator
+// ---------------------------------------------------------------------------
+
+// layout/accentKeys/configVersion back shared/src/build.ts's extended
+// BuildConfigSchema.
+model CustomBuild {
+  id            String   @id @default(cuid())
+  // Nullable: guest configurator state is allowed before sign-in.
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  // One of shared/src/build.ts's BuildLayoutIdSchema values ("60"/"65"/"75"/"tkl").
+  // Required (not nullable) - matches BuildConfigSchema.layout being required,
+  // not part of the optional `selections` map: the 3D model can't render
+  // without one.
+  layout        String
+  // Partial<Record<BuildSlot, optionId>> - see shared/src/build.ts BuildSelectionsSchema.
+  // Values are shared/src/options.ts option ids, not variantIds directly -
+  // see options.ts's catalogRef pattern for how some option ids map onto
+  // real Variant rows and others don't.
+  selections    Json
+  // Record<key id, color option id> - see shared/src/build.ts BuildAccentKeysSchema. Defaults to empty.
+  accentKeys    Json     @default("{}")
+  // Matches shared/src/build.ts's BuildConfig.version / CURRENT_BUILD_CONFIG_VERSION.
+  // Named configVersion (not "version") in the DB to avoid any confusion
+  // with Prisma's own migration versioning; mapped back to the wire field
+  // name "version" by the route's response-mapping function (same
+  // DB-casing-vs-wire-naming pattern as OrderStatus's Title-Case mapping).
+  configVersion Int      @default(1)
+  // Cents. Server MUST recalculate at checkout, never trust a stored/stale value as final.
+  totalPrice    Int
+  name          String?
+  createdAt     DateTime @default(now())
+
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  savedBuilds SavedBuild[]
+
+  @@index([userId])
+  @@index([productId])
+}
+
+// Two FK facts this model (and CustomBuild above) rely on:
+//   - `customBuild` relation below is already `onDelete: Cascade`, so
+//     `DELETE /api/builds/:id` only needs to delete the `CustomBuild` row -
+//     its `SavedBuild` row disappears automatically, no second delete needed.
+//   - `CartItem.customBuildId` / `OrderItem.customBuildId` (see those models)
+//     are both `onDelete: SetNull` - deleting a saved `CustomBuild` can never
+//     be blocked by an FK constraint from either table, it just nulls the
+//     reference on any surviving cart/order line (both already snapshot
+//     enough of their own data to survive that gracefully).
+// `isPublic` is intentionally unused by any route today: single-build-by-id
+// GET is public-by-unguessable-id for everyone, and `isPublic` is reserved
+// for a future public-gallery/discovery feature, not wired as an access
+// gate now.
+model SavedBuild {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customBuildId String
+  customBuild   CustomBuild @relation(fields: [customBuildId], references: [id], onDelete: Cascade)
+  label         String
+  isPublic      Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Cart
+// ---------------------------------------------------------------------------
+
+// userId is @unique - the cart-sync routes (GET /api/cart and friends) do
+// a find-or-create-by-userId, and without a DB-level uniqueness guarantee
+// two near-simultaneous first requests for the same signed-in user could
+// race and create two Cart rows. Postgres unique indexes treat every NULL
+// as a distinct value, so this does not limit guest carts (userId IS NULL,
+// keyed by sessionId instead) - only signed-in users are capped at one
+// Cart row. sessionId/guest-cart-in-DB is currently unused by any route
+// (guest cart stays client-side Zustand/localStorage only); the column and
+// its index are kept for future use.
+model Cart {
+  id        String   @id @default(cuid())
+  // Nullable: guest cart keyed by sessionId instead.
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String?
+  currency  String   @default("usd")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+
+  @@index([sessionId])
+}
+
+// NOTE: exactly one of variantId/customBuildId must be set - enforced in the
+// Zod layer (shared/src/cart.ts superRefine), not a DB CHECK constraint yet.
+// If this table ever gets written outside the API layer (admin script, bulk
+// import), add a Postgres CHECK constraint via raw migration SQL too.
+model CartItem {
+  id            String       @id @default(cuid())
+  cartId        String
+  cart          Cart         @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id])
+  variantId     String?
+  variant       Variant?     @relation(fields: [variantId], references: [id])
+  customBuildId String?
+  customBuild   CustomBuild? @relation(fields: [customBuildId], references: [id])
+  quantity      Int          @default(1)
+  // Cents, snapshotted at add-time.
+  unitPrice     Int
+  lineTotal     Int
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // 1:1 back-reference - a CartItem created by the drop reserve route has
+  // exactly one DropReservation pointing at it (see
+  // DropReservation.cartItemId's @unique below). Not every CartItem has one
+  // (normal shop/configurator lines never do), hence optional.
+  dropReservation DropReservation?
+
+  @@index([cartId])
+  @@index([variantId])
+  @@index([customBuildId])
+}
+
+// ---------------------------------------------------------------------------
+// Orders / addresses
+// ---------------------------------------------------------------------------
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String
+  line1      String
+  line2      String?
+  city       String
+  region     String
+  postalCode String
+  country    String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  shippingOrders Order[] @relation("ShippingAddress")
+  billingOrders  Order[] @relation("BillingAddress")
+
+  @@index([userId])
+}
+
+// Checkout requires an authenticated session (`requireAuth` middleware on
+// `POST /api/checkout/session`) - there is no guest checkout path in this
+// app. userId stays nullable below anyway (no migration forced just to
+// tighten it), since tightening it to NOT NULL would be a bigger,
+// unnecessary schema change for a field that, in practice, is always
+// populated now that checkout requires auth - this is a deliberate choice,
+// not a gap.
+model Order {
+  id                    String      @id @default(cuid())
+  // Nullable: see spec-conflict note above - always populated in practice
+  // since checkout requires auth, but not tightened to NOT NULL.
+  userId                String?
+  user                  User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderNumber           String      @unique
+  status                OrderStatus @default(PLACED)
+  subtotal              Int
+  tax                   Int
+  shipping              Int
+  total                 Int
+  currency              String      @default("usd")
+  shippingAddressId     String?
+  shippingAddress       Address?    @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  billingAddressId      String?
+  billingAddress        Address?    @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  placedAt              DateTime    @default(now())
+  // Stripe TEST MODE payment intent id only.
+  stripePaymentIntentId String?     @unique
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  items OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id            String       @id @default(cuid())
+  orderId       String
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id])
+  variantId     String?
+  variant       Variant?     @relation(fields: [variantId], references: [id])
+  customBuildId String?
+  customBuild   CustomBuild? @relation(fields: [customBuildId], references: [id])
+  // Snapshotted at order time - survives later catalog edits.
+  name          String
+  unitPrice     Int
+  quantity      Int
+  lineTotal     Int
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Group Buy / Drop
+// ---------------------------------------------------------------------------
+
+// Limited-run drop against one Product/Variant pair. Stock is NOT a stored
+// counter you can trust in isolation - it is computed LAZILY, at read time,
+// as:
+//
+//   availableStock = totalStock - soldCount - SUM(quantity WHERE dropId = this.id AND status = ACTIVE)
+//
+// `soldCount` only increments when a reservation actually CONVERTS (the
+// cart item it's attached to survives through a completed checkout) -
+// everything still mid-reservation is counted via the live ACTIVE-rows SUM,
+// not folded into `soldCount` early.
+//
+// There is no background expiry job/cron in this codebase (no scheduler
+// infra exists). Stale ACTIVE reservations past their `expiresAt` are not
+// cleaned up by any timer - they get opportunistically flipped to EXPIRED
+// the next time the reserve route runs, inside that route's own row-locked
+// transaction (`SELECT ... FOR UPDATE` on the drop row, then
+// `UPDATE DropReservation SET status = 'EXPIRED' WHERE dropId = $1 AND
+// status = 'ACTIVE' AND expiresAt < now()` before computing availableStock
+// and deciding whether the new reservation fits). Until the next reserve
+// attempt hits a given drop, an expired-but-still-ACTIVE row continues to
+// count against availableStock - a known, accepted staleness window, not a
+// correctness bug for the oversell-prevention guarantee itself (it only
+// ever makes stock look more scarce than reality, never less, so it cannot
+// cause an oversell).
+//
+// `Variant.stock` is DELIBERATELY NOT used for drop inventory, on purpose,
+// even though this model has a real `variantId` FK into the same `Variant`
+// table the normal shop/cart/checkout path reads stock from. Keeping drop
+// inventory fully separate (totalStock/soldCount/reservations on THIS
+// model) avoids a double-decrement bug class where both the normal
+// checkout webhook's `Variant.stock -= quantity` and a drop-specific
+// decrement could race against the same column for the same row. The
+// linked Variant's own `stock` column is seeded/left at 0 and must be
+// ignored by every drop route and every drop-facing response shape (see
+// shared/src/groupBuyDrop.ts's doc comments on `product`/`variant` for the
+// wire-contract side of this same rule).
+model GroupBuyDrop {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  variantId        String
+  variant          Variant  @relation(fields: [variantId], references: [id])
+  title            String
+  description      String
+  openAt           DateTime
+  closeAt          DateTime
+  totalStock       Int
+  soldCount        Int      @default(0)
+  isManuallyClosed Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  reservations DropReservation[]
+
+  @@index([slug])
+}
+
+// One reserved unit (or batch of units) against a drop, created when a
+// signed-in user reserves drop stock (adds it to cart). See GroupBuyDrop's
+// doc comment above for the lazy-stock formula this table feeds, and for
+// the "no cron, opportunistic expiry inside the reserve route's own locked
+// transaction" note - that logic reads/writes THIS table's `status` column,
+// not a new one.
+//
+// `cartItemId` is `@unique` (1:1, not 1:many) - exactly one CartItem backs
+// one reservation, created together in the same transaction (reserve route
+// creates both the CartItem and this row, linked). `onDelete: SetNull` on
+// `cartItem`: if the CartItem is later removed from the cart (user deletes
+// the line before checkout), this reservation row survives with
+// `cartItemId = null` rather than being deleted outright - it should
+// immediately transition to RELEASED by that same cart-item-removal route
+// (frees the reserved stock back to availableStock), not linger as ACTIVE
+// with a dangling null FK. `onDelete: Cascade` on `drop`/`user`: a deleted
+// drop or user has no meaningful orphaned reservation to keep.
+model DropReservation {
+  id         String            @id @default(cuid())
+  dropId     String
+  drop       GroupBuyDrop      @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cartItemId String?           @unique
+  cartItem   CartItem?         @relation(fields: [cartItemId], references: [id], onDelete: SetNull)
+  quantity   Int
+  status     ReservationStatus @default(ACTIVE)
+  expiresAt  DateTime
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([dropId, status])
+  @@index([userId])
+}
