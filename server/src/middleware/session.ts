@@ -28,7 +28,10 @@ const PgSession = connectPgSimple(session)
  */
 export const sessionMiddleware: RequestHandler = session({
   store: new PgSession({
-    conString: env.DATABASE_URL,
+    // `max` caps the store's own pg pool (default 10). Together with Prisma's
+    // cap (src/db/prisma.ts) this keeps one instance at ~6 of Supabase's 15
+    // Session-pooler connections, leaving room for dev + prod + a deploy.
+    conObject: { connectionString: env.DATABASE_URL, max: 2 },
     tableName: "session",
     createTableIfMissing: false,
   }),

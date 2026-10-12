@@ -34,6 +34,9 @@ services:
     startCommand: cd server && npm run start
     healthCheckPath: /health
     envVars:
+      # Pinned to the version the project is developed and tested on.
+      - key: NODE_VERSION
+        value: 20.20.2
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -71,6 +74,8 @@ services:
     buildCommand: cd shared && npm install --include=dev && cd ../client && npm install --include=dev && npm run build
     staticPublishPath: client/dist
     envVars:
+      - key: NODE_VERSION
+        value: 20.20.2
       # Links shown on the About page. Fill in after you create the repo.
       - key: VITE_REPO_URL
         sync: false

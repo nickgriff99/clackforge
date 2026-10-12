@@ -174,7 +174,10 @@ productsRouter.get("/api/products/:slug", async (req, res, next) => {
 
     const row = await prisma.product.findUnique({
       where: { slug },
-      include: { variants: true },
+      // Explicit order: without it Postgres returns heap order, which shifts
+      // after any UPDATE, so the storefront's default (first) variant could
+      // flip to an out-of-stock one.
+      include: { variants: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
     })
 
     if (!row || row.status !== "ACTIVE") {
@@ -321,7 +324,10 @@ productsRouter.post("/api/admin/products", requireAuth, requireAdmin, async (req
 productsRouter.get<{ id: string }>("/api/admin/products/:id", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { id } = req.params
-    const row = await prisma.product.findUnique({ where: { id }, include: { variants: true } })
+    const row = await prisma.product.findUnique({
+      where: { id },
+      include: { variants: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    })
     if (!row) {
       res.status(404).json(ApiErrorSchema.parse({ error: notFoundProduct(id) }))
       return
