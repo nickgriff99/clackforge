@@ -2,11 +2,30 @@
 
 **Build your clack.** A full-stack e-commerce store for custom mechanical keyboards, built around a real-time 3D configurator. The store is fictional and the engineering is real: every feature below runs against a live Postgres database, not mock data.
 
-**Live demo:** _add the deployed URL here_ · **Source:** https://github.com/nickgriff99
+**Live demo:** https://clackforge-client.onrender.com · **Source:** https://github.com/nickgriff99/clackforge
+
+The demo runs on free hosting and sleeps when idle, so the first request can take up to a minute to wake the API.
 
 > Portfolio project. No real products are sold. Checkout only ever runs in Stripe test mode (`4242 4242 4242 4242`).
 
 Reviewing this? The "Try as admin" button on the About page signs you into the admin dashboard in one click. No account needed.
+
+![CLACKFORGE shop](docs/screenshots/shop.jpg)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/configurator.jpg" alt="3D keyboard configurator with live pricing"><br><sub><b>3D configurator.</b> Layout, case, switches and keycaps update the model and a server-verified price.</sub></td>
+    <td width="50%"><img src="docs/screenshots/hero-exploded.jpg" alt="Home hero keyboard exploded into layers"><br><sub><b>Scroll-driven hero.</b> The keyboard explodes into keycaps, switches, plate, PCB and case.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/switch-detail.jpg" alt="Switch detail page with exploded 3D switch and force curve"><br><sub><b>Switch detail.</b> Exploded 3D switch, force curve and synthesized sound.</sub></td>
+    <td width="50%"><img src="docs/screenshots/group-buy.jpg" alt="Group buy drop page with countdown and live stock"><br><sub><b>Group buy drop.</b> Countdown, live stock and database-locked reservations.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/admin-dashboard.jpg" alt="Admin dashboard with revenue chart and most-configured options"><br><sub><b>Admin dashboard.</b> Revenue, order trends and most-configured options from real builder data.</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/mobile-shop.jpg" alt="Shop page on a phone" width="240"><br><sub><b>Mobile.</b> Mobile-first layout throughout.</sub></td>
+  </tr>
+</table>
 
 ---
 

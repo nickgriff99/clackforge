@@ -6,4 +6,4 @@ Disallow: /checkout
 
 # The Sitemap directive needs an absolute URL. Replace the origin below with
 # your deployed site before going live (same value as in sitemap.xml).
-Sitemap: https://clackforge.example/sitemap.xml
+Sitemap: https://clackforge-client.onrender.com/sitemap.xml
